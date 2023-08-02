@@ -1,62 +1,47 @@
-class SUPPORTED_PROPERTY_TYPES:
-    types = {'long': 'long', 'boolean': 'boolean'}
+import json
+import unittest
 
-    @staticmethod
-    def get_type(name):
-        if name in SUPPORTED_PROPERTY_TYPES.types:
-            return SUPPORTED_PROPERTY_TYPES.types[name]
-        else:
-            raise Exception(f"Unsupported property type: {name}")
+# assuming the classes TimePeriod, Minus, Operator are defined in the file measure.py
+from measure import TimePeriod, Minus, Operator
 
-class Measure:
-    def __init__(self, measure, params):
-        self.id = measure['id']
-        self.name = measure['name']
-        self.steward = measure['steward']
-        self.properties = {property: Property(value['name'], value['type'], value['codes']) for property, value in measure['properties'].items()}
-        if any(param not in params for param in measure['parameters']):
-            raise Exception("No value supplied for measure parameter")
-        self.parameters = {param: Parameter(value['name'], value['type'], params[param]) for param, value in measure['parameters'].items()}
-        parser = Operator(self.parameters)
-        self.parameters.update({param: parser.parse(value) for param, value in measure['calculated_dates'].items()})
+class TestTimePeriod(unittest.TestCase):
+    def test_extract_value_and_units_from_a_hash(self):
+        period_json = '{"val": "1", "unit":"year"}'
+        hash = json.loads(period_json)
+        period = TimePeriod({}, hash)
+        self.assertEqual(period.evaluate(), 365*24*60*60)
 
+class TestMinus(unittest.TestCase):
+    def test_support_two_val_unit_args(self):
+        args_json = '[{"val": "1", "unit":"year"}, {"val": "1", "unit":"year"}]'
+        arr = json.loads(args_json)
+        minus = Minus({}, arr)
+        self.assertEqual(minus.evaluate(), 0)
+        
+    def test_support_one_val_unit_arg_and_one_reference(self):
+        args_json = '["@param", {"val": "2", "unit":"second"}]'
+        arr = json.loads(args_json)
+        minus = Minus({"param": 4}, arr)
+        self.assertEqual(minus.evaluate(), 2)
+        
+    def test_support_one_val_unit_arg_and_one_explicit_number(self):
+        args_json = '["4", {"val": "2", "unit":"second"}]'
+        arr = json.loads(args_json)
+        minus = Minus({"param": 2}, arr)
+        self.assertEqual(minus.evaluate(), 2)
 
-class Property:
-    def __init__(self, name, type, codes):
-        self.name = name
-        self.type = SUPPORTED_PROPERTY_TYPES.get_type(type)
-        self.codes = codes
+class TestOperator(unittest.TestCase):
+    def test_be_able_to_perform_minus_on_years(self):
+        args_json = '{"$minus": [{"val": "1", "unit":"year"}, {"val": "1", "unit":"year"}]}'
+        arr = json.loads(args_json)
+        minus = Operator({}).parse(arr)
+        self.assertEqual(minus.evaluate(), 0)
+        
+    def test_be_able_to_perform_minus_on_seconds(self):
+        args_json = '{"$minus": [{"val": "3", "unit":"second"}, {"val": "1", "unit":"second"}]}'
+        arr = json.loads(args_json)
+        minus = Operator({}).parse(arr)
+        self.assertEqual(minus.evaluate(), 2)
 
-
-class Parameter:
-    def __init__(self, name, type, value):
-        self.name = name
-        self.type = SUPPORTED_PROPERTY_TYPES.get_type(type)
-        self.value = value
-
-
-class Operator:
-    def __init__(self, parameters):
-        self.parameters = parameters
-
-
-class Minus(Operator):
-    def __init__(self, parameters, operands):
-        super().__init__(parameters)
-        if len(operands) != 2:
-            raise Exception("Number of operands must be 2, {} supplied".format(len(operands)))
-
-
-class TimePeriod:
-    SECONDS_IN_A_YEAR = 365*24*60*60
-    UNIT_FACTOR = {'year': SECONDS_IN_A_YEAR, 'month': SECONDS_IN_A_YEAR/12, 'day': 24*60*60, 'second': 1}
-
-    def __init__(self, parameters, hash):
-        super().__init__(parameters)
-        self.value = int(hash['val'])
-        self.unit = hash['unit']
-        if self.unit not in self.UNIT_FACTOR:
-            raise Exception(f"Unknown unit: {self.unit}")
-
-    def evaluate(self):
-        return self.value * self.UNIT_FACTOR[self.unit]
+if __name__ == '__main__':
+    unittest.main()
