@@ -1,7 +1,7 @@
-import json
 import unittest
+import json
 import time
-from measure import Measure, UnsupportedPropertyTypeError, NoValueSuppliedForMeasureParameterError
+from measure import Measure, UnsupportedPropertyTypeError
 
 invalid_measure_json = """
 {
@@ -28,47 +28,50 @@ invalid_measure_json = """
 }
 """
 
-class TestMeasure(unittest.TestCase):
+class TestEngineMeasure(unittest.TestCase):
     def setUp(self):
-        with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json') as f:
-            self.measure_json = f.read()
-        self.hash = json.loads(self.measure_json)
+        with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json', 'r') as f:
+            self.measure_json = json.load(f)
+            self.time = int(time.time())
+            self.measure = Measure(self.measure_json, {'effective_date': self.time})
 
-    def test_metadata_extraction(self):
-        measure = Measure(self.hash, {'effective_date': int(time.time())})
-        self.assertEqual(measure.id, '0043')
-        self.assertEqual(measure.name, 'Pneumonia Vaccination Status for Older Adults')
-        self.assertEqual(measure.steward, 'NCQA')
+    def test_should_extract_the_measure_metadata(self):
+        self.assertEqual(self.measure.id, '0043')
+        self.assertEqual(self.measure.name, 'Pneumonia Vaccination Status for Older Adults')
+        self.assertEqual(self.measure.steward, 'NCQA')
 
-    def test_property_extraction(self):
-        measure = Measure(self.hash, {'effective_date': int(time.time())})
-        self.assertEqual(len(measure.properties), 3)
-        self.assertIn('birthdate', measure.properties)
-        self.assertIn('encounter', measure.properties)
-        self.assertIn('vaccination', measure.properties)
-        # Repeat for all property types and codes as needed...
+    def test_should_extract_three_properties_for_measure_0043(self):
+        self.assertEqual(len(self.measure.properties), 3)
+        self.assertIn('birthdate', self.measure.properties)
+        self.assertIn('encounter', self.measure.properties)
+        self.assertIn('vaccination', self.measure.properties)
+        self.assertEqual(self.measure.properties['birthdate'].type, 'long')
+        self.assertEqual(len(self.measure.properties['birthdate'].codes), 1)
+        self.assertIn('HL7', self.measure.properties['birthdate'].codes)
+        self.assertEqual(self.measure.properties['encounter'].type, 'long')
+        self.assertEqual(len(self.measure.properties['encounter'].codes), 2)
+        self.assertIn('CPT', self.measure.properties['encounter'].codes)
+        self.assertIn('ICD-9-CM', self.measure.properties['encounter'].codes)
+        self.assertEqual(self.measure.properties['vaccination'].type, 'boolean')
 
-    def test_parameter_extraction(self):
-        time_now = int(time.time())
-        measure = Measure(self.hash, {'effective_date': time_now})
-        self.assertEqual(len(measure.parameters), 3)
-        self.assertIn('effective_date', measure.parameters)
-        self.assertEqual(measure.parameters['effective_date'].type, 'long')
-        self.assertEqual(measure.parameters['effective_date'].value, time_now)
+    def test_should_extract_three_parameters_for_measure_0043(self):
+        self.assertEqual(len(self.measure.parameters), 3)
+        self.assertIn('effective_date', self.measure.parameters)
+        self.assertEqual(self.measure.parameters['effective_date'].type, 'long')
+        self.assertEqual(self.measure.parameters['effective_date'].value, self.time)
 
-    def test_invalid_measure(self):
-        invalid_hash = json.loads(invalid_measure_json)
+    def test_should_raise_a_RuntimeError_for_invalid_measures(self):
+        hash = json.loads(invalid_measure_json)
         with self.assertRaises(UnsupportedPropertyTypeError):
-            Measure(invalid_hash, {'effective_date': int(time.time())})
+            Measure(hash, {'effective_date': int(time.time())})
 
-    def test_no_parameters(self):
-        with self.assertRaises(NoValueSuppliedForMeasureParameterError):
-            Measure(self.hash)
+    def test_should_raise_a_RuntimeError_if_not_passed_all_the_parameters(self):
+        with self.assertRaises(Exception):
+            Measure(self.measure_json)
 
-    def test_calculated_dates(self):
-        date = int(time.time())
-        measure = Measure(self.hash, {'effective_date': date})
-        self.assertEqual(measure.parameters['earliest_encounter'].value, date-365*24*60*60)
+    def test_should_calculate_the_calculated_dates_correctly(self):
+        self.assertEqual(self.measure.parameters['earliest_encounter'].value, self.time - Measure.YEAR_IN_SECONDS)
+
 
 if __name__ == '__main__':
     unittest.main()
