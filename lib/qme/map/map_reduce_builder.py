@@ -4,7 +4,7 @@ class Builder:
     def __init__(self, measure_def, params):
         self.measure_def = measure_def
         self.measure = Measure(measure_def, params)
-        self.property_prefix = 'measures.' + self.measure.id + '.'
+        self.property_prefix = f'measures["{self.measure.id}"].'
 
     def population(self):
         return self.javascript(self.measure_def['population'])
@@ -23,10 +23,26 @@ class Builder:
             # leaf node
             query = expr['query']
             triple = self.leaf_expr(query)
-            return self.property_prefix + triple[0] + triple[1] + triple[2]
+            return f'({self.property_prefix}{triple[0]}{triple[1]}{triple[2]})'
+        elif len(expr) == 1:
+            operator = list(expr.keys())[0]
+            result = self.logical_expr(operator, expr[operator])
+            operator = result.pop(0)
+            js = '('
+            for index, operand in enumerate(result):
+                if index > 0:
+                    js += operator
+                js += operand
+            js += ')'
+            return js
+        elif len(expr) == 0:
+            return '(false)'
         else:
-            # logical operator $and, $or etc
-            return ''
+            raise ValueError(f"Unexpected number of keys in: {expr}")
+
+    def logical_expr(self, operator, args):
+        operands = [self.javascript(arg) for arg in args]
+        return [self.get_operator(operator)] + operands
 
     def leaf_expr(self, query):
         property_name = list(query.keys())[0]
@@ -40,13 +56,24 @@ class Builder:
 
     @staticmethod
     def get_operator(operator):
-        operators = {'$gt': '>', '$gte': '>=', '$lt': '<', '$lte': '<='}
-        if operator not in operators:
+        operators = {
+            '$gt': '>',
+            '$gte': '>=',
+            '$lt': '<',
+            '$lte': '<=',
+            '$and': '&&',
+            '$or': '||'
+        }
+        if operator in operators:
+            return operators[operator]
+        else:
             raise ValueError(f"Unknown operator: {operator}")
-        return operators[operator]
 
     def get_value(self, value):
-        if isinstance(value, str) and value[0] == '@':
-            return str(self.measure.parameters[value[1:]].value)
+        if isinstance(value, str):
+            if value[0] == '@':
+                return str(self.measure.parameters[value[1:]].value)
+            else:
+                return f'"{value}"'
         else:
             return str(value)
