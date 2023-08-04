@@ -1,8 +1,7 @@
 import os
-import sys
 import json
+from pymongo import MongoClient
 
-# Adds the directory containing the current file to the Python path
-sys.path.append(os.path.dirname(__file__))
-
-from qme.query.json_document_builder import JsonDocumentBuilder
+from map_reduce_builder import MapReduceBuilder
+from map_reduce_executor import MapReduceExecutor
+from json_document_builder import JSONDocumentBuilder
