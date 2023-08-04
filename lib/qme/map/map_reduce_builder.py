@@ -1,7 +1,32 @@
-from QME import Measure
+from Measure import Measure
 
 class Builder:
-    REDUCE_FUNCTION = """
+    def __init__(self, measure_def, params):
+        self.measure_def = measure_def
+        self.measure = Measure(measure_def, params)
+        self.property_prefix = f'this.measures["{self.measure.id}"].'
+
+    def map_function(self):
+        return f'''
+        function () {{
+          var value = {{i: 0, d: 0, n: 0, e: 0}};
+          if {self.population} {{
+            value.i++;
+            if {self.denominator} {{
+              value.d++;
+              if {self.numerator} {{
+                value.n++;
+              }} else if {self.exception} {{
+                value.e++;
+                value.d--;
+              }}
+            }}
+          }}
+          emit(null, value);
+        }};
+        '''
+
+    REDUCE_FUNCTION = '''
     function (key, values) {
       var total = {i: 0, d: 0, n: 0, e: 0};
       for (var i = 0; i < values.length; i++) {
@@ -12,30 +37,7 @@ class Builder:
       }
       return total;
     };
-    """
-
-    def __init__(self, measure_def, params):
-        self.measure_def = measure_def
-        self.measure = Measure(measure_def, params)
-        self.property_prefix = 'measures["' + self.measure.id + '"].'
-
-    def map_function(self):
-        return f"""function () {{
-      var value = {{i: 0, d: 0, n: 0, e: 0}};
-      if {self.population()} {{
-        value.i++;
-        if {self.denominator()} {{
-          value.d++;
-          if {self.numerator()} {{
-            value.n++;
-          }} else if {self.exception()} {{
-            value.e++;
-            value.d--;
-          }}
-        }}
-      }}
-      emit(null, value);
-    }};\n"""
+    '''
 
     def reduce_function(self):
         return self.REDUCE_FUNCTION
@@ -56,22 +58,26 @@ class Builder:
         if 'query' in expr:
             query = expr['query']
             triple = self.leaf_expr(query)
-            return f"({self.property_prefix}{triple[0]}{triple[1]}{triple[2]})"
+            property_name = self.munge_property_name(triple[0])
+            return f'({property_name}{triple[1]}{triple[2]})'
         elif len(expr) == 1:
             operator = list(expr.keys())[0]
             result = self.logical_expr(operator, expr[operator])
             operator = result.pop(0)
-            js = "("
+            js = '('
             for index, operand in enumerate(result):
                 if index > 0:
                     js += operator
                 js += operand
-            js += ")"
+            js += ')'
             return js
         elif len(expr) == 0:
-            return "(false)"
+            return '(false)'
         else:
             raise Exception(f"Unexpected number of keys in: {expr}")
+
+    def munge_property_name(self, name):
+        return f'this.{name}' if name == 'birthdate' else f'{self.property_prefix}{name}'
 
     def logical_expr(self, operator, args):
         operands = [self.javascript(arg) for arg in args]
@@ -87,15 +93,17 @@ class Builder:
         else:
             return [property_name, '==', self.get_value(property_value_expression)]
 
-    def get_operator(self, operator):
-        return {
+    @staticmethod
+    def get_operator(operator):
+        switcher = {
             '_gt': '>',
             '_gte': '>=',
             '_lt': '<',
             '_lte': '<=',
             'and': '&&',
-            'or': '||'
-        }.get(operator, Exception(f"Unknown operator: {operator}"))
+            'or': '||',
+        }
+        return switcher.get(operator, Exception(f"Unknown operator: {operator}"))
 
     def get_value(self, value):
         if isinstance(value, str) and value[0] == '@':

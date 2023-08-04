@@ -1,27 +1,27 @@
 import json
-import unittest
 import time
-from measure import Measure, Builder
+from measure import Measure
+from map_reduce_builder import MapReduceBuilder
 
-complex_measure_json = """
+COMPLEX_MEASURE_JSON = """
 {
   "id": "0043",
   "name": "Pneumonia Vaccination Status for Older Adults",
   "steward": "NCQA",
   "population": {
-    "$and": [
+    "and": [
       {
         "category": "Patient Characteristic",
         "title": "Age > 17 before measure period",
-        "query": {"age": {"$gt": 17}}
+        "query": {"age": {"_gt": 17}}
       },
       {
         "category": "Patient Characteristic",
         "title": "Age < 75 before measure period",
-        "query": {"age": {"$lt": 75}}
+        "query": {"age": {"_lt": 75}}
       },
       {
-        "$or": [
+        "or": [
           {
             "category": "Patient Characteristic",
             "title": "Male",
@@ -42,24 +42,42 @@ complex_measure_json = """
 }
 """
 
-class TestBuilder(unittest.TestCase):
-    def test_valid_JavaScript_expressions(self):
-        with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json', 'r') as f:
-            measure_json = f.read()
-        hash = json.loads(measure_json)
-        date = int(time.time())
-        measure = Measure(hash, {'effective_date': date})
-        builder = Builder(hash, {'effective_date': date})
-        self.assertEqual(builder.numerator(), '(measures["0043"].vaccination==true)')
-        self.assertEqual(builder.denominator(), f'(measures["0043"].encounter>={measure.parameters["earliest_encounter"].value})')
-        self.assertEqual(builder.population(), f'(measures["0043"].birthdate<={measure.parameters["earliest_birthdate"].value})')
-        self.assertEqual(builder.exception(), '(false)')
+MAP_FUNCTION = """
+function () {
+  var value = {i: 0, d: 0, n: 0, e: 0};
+  if (this.birthdate<=-764985600) {
+    value.i++;
+    if (this.measures["0043"].encounter>=1253318400) {
+      value.d++;
+      if (this.measures["0043"].vaccination==true) {
+        value.n++;
+      } else if (false) {
+        value.e++;
+        value.d--;
+      }
+    }
+  }
+  emit(null, value);
+};
+"""
 
-    def test_handle_logical_combinations(self):
-        hash = json.loads(complex_measure_json)
-        measure = Measure(hash, {})
-        builder = Builder(hash, {})
-        self.assertEqual(builder.population(), '((measures["0043"].age>17)&&(measures["0043"].age<75)&&((measures["0043"].sex=="male")||(measures["0043"].sex=="female")))')
+def test_builder():
+    # First test
+    with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json') as f:
+        measure_json = f.read()
+    hash = json.loads(measure_json)
+    date = time.mktime(time.strptime('2010-09-19', '%Y-%m-%d'))
+    measure = Measure(hash, {"effective_date": date})
+    builder = MapReduceBuilder(hash, {"effective_date": date})
+    assert builder.numerator == '(this.measures["0043"].vaccination==true)'
+    assert builder.denominator == '(this.measures["0043"].encounter>='+str(measure.parameters['earliest_encounter'].value)+')'
+    assert builder.population == '(this.birthdate<='+str(measure.parameters['earliest_birthdate'].value)+')'
+    assert builder.exception == '(false)'
+    assert builder.map_function == MAP_FUNCTION.strip()
+    assert builder.reduce_function == MapReduceBuilder.REDUCE_FUNCTION.strip()
 
-if __name__ == '__main__':
-    unittest.main()
+    # Second test
+    hash = json.loads(COMPLEX_MEASURE_JSON)
+    measure = Measure(hash, {})
+    builder = MapReduceBuilder(hash, {})
+    assert builder.population == '((this.measures["0043"].age>17)&&(this.measures["0043"].age<75)&&((this.measures["0043"].sex=="male")||(this.measures["0043"].sex=="female")))'
