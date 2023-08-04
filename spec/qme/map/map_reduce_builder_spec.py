@@ -1,46 +1,7 @@
-import unittest
 import json
-import time
-from Measure import Builder
-
-COMPLEX_MEASURE_JSON = """
-{
-  "id": "0043",
-  "name": "Pneumonia Vaccination Status for Older Adults",
-  "steward": "NCQA",
-  "population": {
-    "and": [
-      {
-        "category": "Patient Characteristic",
-        "title": "Age > 17 before measure period",
-        "query": {"age": {"_gt": 17}}
-      },
-      {
-        "category": "Patient Characteristic",
-        "title": "Age < 75 before measure period",
-        "query": {"age": {"_lt": 75}}
-      },
-      {
-        "or": [
-          {
-            "category": "Patient Characteristic",
-            "title": "Male",
-            "query": {"sex": "male"}
-          },
-          {
-            "category": "Patient Characteristic",
-            "title": "Female",
-            "query": {"sex": "female"}
-          }
-        ]
-      }
-    ]
-  },
-  "denominator": {},
-  "numerator": {},
-  "exception": {}
-}
-"""
+import unittest
+from time import gmtime, mktime
+from Builder import Builder
 
 MAP_FUNCTION = """
 function () {
@@ -62,27 +23,46 @@ function () {
 """
 
 class TestBuilder(unittest.TestCase):
-    def setUp(self):
-        with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json') as f:
-            self.measure_json = json.load(f)
-        self.time = time.mktime(time.strptime("19/09/2010", "%d/%m/%Y"))
+    @classmethod
+    def setUpClass(cls):
+        with open('measures/0043/0043_NQF_PneumoniaVaccinationStatusForOlderAdults.json', 'r') as f:
+            cls.measure_json = json.load(f)
+        with open('fixtures/complex_measure.json', 'r') as f:
+            cls.complex_measure_json = json.load(f)
 
-    def test_measure_metadata(self):
-        measure = Builder(self.measure_json, {'effective_date': self.time})
+    def test_should_extract_the_measure_metadata(self):
+        measure = Builder(self.measure_json, {'effective_date': int(mktime(gmtime(2010, 9, 19)))})
         self.assertEqual(measure.id, '0043')
 
-    def test_extract_three_parameters(self):
-        measure = Builder(self.measure_json, {'effective_date': self.time})
+    def test_should_extract_three_parameters_for_measure_0043(self):
+        time = int(mktime(gmtime(2010, 9, 19)))
+        measure = Builder(self.measure_json, {'effective_date': time})
         self.assertEqual(len(measure.parameters), 3)
         self.assertIn('effective_date', measure.parameters)
-        self.assertEqual(measure.parameters['effective_date'], self.time)
+        self.assertEqual(measure.parameters['effective_date'], time)
 
-    def test_raise_error_on_missing_parameter(self):
-        with self.assertRaises(RuntimeError):
+    def test_should_raise_RuntimeError_if_not_passed_all_the_parameters(self):
+        with self.assertRaises(RuntimeError, msg='No value supplied for measure parameter: effective_date'):
             Builder(self.measure_json)
 
-    def test_calculate_dates_correctly(self):
-        measure = Builder(self.measure_json, {'effective_date': self.time})
-        self.assertEqual(measure.parameters['earliest_encounter'], self.time - Builder.YEAR_IN_SECONDS)
+    def test_should_calculate_the_calculated_dates_correctly(self):
+        date = int(mktime(gmtime(2010, 9, 19)))
+        measure = Builder(self.measure_json, {'effective_date': date})
+        self.assertEqual(measure.parameters['earliest_encounter'], date - Builder.YEAR_IN_SECONDS)
 
-    # Add more tests here...
+    def test_should_produce_valid_JavaScript_expressions_for_the_query_components(self):
+        date = int(mktime(gmtime(2010, 9, 19)))
+        builder = Builder(self.measure_json, {'effective_date': date})
+        self.assertEqual(builder.numerator, '(this.measures["0043"].vaccination==true)')
+        self.assertEqual(builder.denominator, '(this.measures["0043"].encounter>=' + str(builder.parameters['earliest_encounter']) + ')')
+        self.assertEqual(builder.population, '(this.birthdate<=' + str(builder.parameters['earliest_birthdate']) + ')')
+        self.assertEqual(builder.exception, '(false)')
+        self.assertEqual(builder.map_function, MAP_FUNCTION)
+        self.assertEqual(builder.reduce_function, Builder.REDUCE_FUNCTION)
+
+    def test_should_handle_logical_combinations(self):
+        builder = Builder(self.complex_measure_json, {})
+        self.assertEqual(builder.population, '((this.measures["0043"].age>17)&&(this.measures["0043"].age<75)&&((this.measures["0043"].sex=="male")||(this.measures["0043"].sex=="female")))')
+
+if __name__ == '__main__':
+    unittest.main()
