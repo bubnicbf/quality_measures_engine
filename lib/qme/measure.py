@@ -1,60 +1,38 @@
-from execjs import compile
+import json
+from PyV8 import JSContext
 
 # Represents a quality measure definition
 class Measure:
-
-    SUPPORTED_PROPERTY_TYPES = {'long': 'long', 'boolean': 'boolean'}
-
-    @classmethod
-    def get_type(cls, name):
-        if name in cls.SUPPORTED_PROPERTY_TYPES:
-            return cls.SUPPORTED_PROPERTY_TYPES[name]
-        else:
-            raise ValueError(f"Unsupported property type: {name}")
-
     YEAR_IN_SECONDS = 365 * 24 * 60 * 60
 
     def __init__(self, measure, params):
-        self.id = measure['id']
-        self.name = measure['name']
-        self.steward = measure['steward']
-        self.properties = {}
-        measure.setdefault('properties', {})
-        for property, value in measure['properties'].items():
-            self.properties[property] = Property(value['name'],
-                                                 value['type'],
-                                                 value['codes'])
+        # Parses the supplied measure definition, extracts the measure properties
+        # and calculates the values of any calculated dates. <tt>measure</tt> is
+        # expected to be a dictionary equivalent to that obtained from applying json.loads
+        # to a JSON measure definition. The <tt>params</tt> dictionary should contain a
+        # value for each parameter listed in the measure.
+        self.id = measure.get('id')
+        self.name = measure.get('name')
+        self.steward = measure.get('steward')
         self.parameters = {}
-        measure.setdefault('parameters', {})
-        for parameter, value in measure['parameters'].items():
+        measure_parameters = measure.get('parameters', {})
+        for parameter, value in measure_parameters.items():
             if parameter not in params:
-                raise ValueError(f"No value supplied for measure parameter: {parameter}")
-            self.parameters[parameter] = Parameter(value['name'],
-                                                   value['type'],
-                                                   params[parameter])
+                raise Exception(f"No value supplied for measure parameter: {parameter}")
+            self.parameters[parameter] = Parameter(value.get('name'), params[parameter])
 
-        ctx = compile("""
-            function calculate(value, year) {
-                return eval(value)
-            }
-        """)
+        ctx = JSContext()
+        ctx.enter()
+        ctx.locals.year = self.YEAR_IN_SECONDS
+        for key, param in self.parameters.items():
+            ctx.locals[key] = param.value
 
-        measure.setdefault('calculated_dates', {})
-        for parameter, value in measure['calculated_dates'].items():
-            self.parameters[parameter] = Parameter(parameter, 'long', ctx.call('calculate', value, self.YEAR_IN_SECONDS))
-
-# Represents a property of a quality measure
-class Property:
-
-    def __init__(self, name, type, codes):
-        self.name = name
-        self.type = Measure.get_type(type)
-        self.codes = codes
+        measure_calculated_dates = measure.get('calculated_dates', {})
+        for parameter, value in measure_calculated_dates.items():
+            self.parameters[parameter] = Parameter(parameter, ctx.eval(value))
 
 # Represents a parameter of a quality measure
 class Parameter:
-
-    def __init__(self, name, type, value):
+    def __init__(self, name, value):
         self.name = name
-        self.type = Measure.get_type(type)
         self.value = value
