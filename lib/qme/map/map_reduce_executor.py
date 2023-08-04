@@ -1,15 +1,17 @@
-from Builder import Builder
+from pymongo import MongoClient
+from JSONDocumentBuilder import JSONDocumentBuilder
 
 class Executor:
     def __init__(self, db):
-        self.db = db
+        self.db = MongoClient()[db]
 
-    def get_measure_def(self, measure_id):
+    def measure_def(self, measure_id):
         measures = self.db['measures']
-        return measures.find_one({'id': measure_id})
+        measure = measures.find_one({'id': measure_id})
+        return measure
 
-    def execute(self, measure_id, parameter_values):
-        measure = Builder(self.get_measure_def(measure_id), parameter_values)
+    def measure_result(self, measure_id, parameter_values):
+        measure = JSONDocumentBuilder(self.measure_def(measure_id), parameter_values)
 
         records = self.db['records']
         results = records.map_reduce(measure.map_function, measure.reduce_function)
