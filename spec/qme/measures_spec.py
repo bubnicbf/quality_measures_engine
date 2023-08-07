@@ -4,16 +4,20 @@ import os
 import json
 import time
 
+# Assuming there's a pythonic version of QME::MapReduce::Executor
+from qme_mapreduce_executor import QMEMapReduceExecutor 
+
 class TestQMEMapReduceExecutor(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Connecting to the MongoDB server and selecting the database
-        cls.client = pymongo.MongoClient('localhost', 27017)
+        db_host = os.environ.get('TEST_DB_HOST', 'localhost')
+        cls.client = pymongo.MongoClient(db_host, 27017)
         cls.db = cls.client['test']
         cls.measures = [f.path for f in os.scandir('measures') if f.is_dir()]
 
     def test_expected_results_for_each_measure(self):
+        print("\n")
         for dir in self.measures:
             # Load db with measure and sample patient records
             files = [f.path for f in os.scandir(dir) if f.is_file() and f.name.endswith('.json')]
@@ -43,14 +47,14 @@ class TestQMEMapReduceExecutor(unittest.TestCase):
             with open(result_file, 'r') as rf:
                 expected = json.load(rf)
             
-            # executor = QMEMapReduceExecutor(self.db)
-            # result = executor.measure_result(measure_id, effective_date=int(time.mktime(time.strptime("2010-09-19", "%Y-%m-%d"))))
+            executor = QMEMapReduceExecutor(self.db)
+            result = executor.measure_result(measure_id, effective_date=int(time.mktime(time.strptime("2010-09-19", "%Y-%m-%d"))))
             
             # Compare results
-            # self.assertEqual(result['population'], expected['initialPopulation'])
-            # self.assertEqual(result['numerator'], expected['numerator'])
-            # self.assertEqual(result['denominator'], expected['denominator'])
-            # self.assertEqual(result['exceptions'], expected['exclusions'])
+            self.assertEqual(result['population'], expected['initialPopulation'])
+            self.assertEqual(result['numerator'], expected['numerator'])
+            self.assertEqual(result['denominator'], expected['denominator'])
+            self.assertEqual(result['exceptions'], expected['exclusions'])
             
             print(" - done")
 
