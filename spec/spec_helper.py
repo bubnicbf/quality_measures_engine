@@ -27,7 +27,7 @@ else:
 
 # The import statement equivalent of require in Python
 try:
-    from quality_measure_engine import *
+    from quality-measure-engine import *
 except ImportError as e:
     print(f"Unable to import the Quality Measure Engine. Error: {str(e)}")
     sys.exit(1)  # Exit the script since the engine couldn't be imported
