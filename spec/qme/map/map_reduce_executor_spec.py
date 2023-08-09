@@ -1,14 +1,21 @@
-import time
+import unittest
 from pymongo import MongoClient
-from map_reduce_executor import MapReduceExecutor
+from Executor import Executor
+from time import gmtime, mktime
 
-def test_executor():
-    db = MongoClient('localhost', 27017)['test']
-    executor = MapReduceExecutor(db)
+class TestExecutor(unittest.TestCase):
 
-    result = executor.execute('0043', {"effective_date": time.mktime(time.strptime('2010-09-19', '%Y-%m-%d'))})
+    def test_should_be_able_to_get_a_query_from_the_database(self):
+        db = MongoClient('localhost', 27017)['test']
+        e = Executor(db)
+        
+        r = e.measure_result('0043', {'effective_date': int(mktime(gmtime(2010, 9, 19)))})
+        
+        self.assertEqual(r['population'], 3)
+        self.assertEqual(r['numerator'], 1)
+        self.assertEqual(r['denominator'], 2)
+        self.assertEqual(r['exceptions'], 0)
 
-    assert result['population'] == 3
-    assert result['numerator'] == 1
-    assert result['denominator'] == 2
-    assert result['exceptions'] == 0
+
+if __name__ == '__main__':
+    unittest.main()
